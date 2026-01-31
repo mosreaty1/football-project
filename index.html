@@ -21,20 +21,22 @@
         </div>
 
         <div class="source-section">
-            <label for="sourceSelect">Player Source:</label>
+            <label for="sourceSelect">Player:</label>
             <select id="sourceSelect">
-                <option value="anym3u8">AnyM3U8Player</option>
                 <option value="hlsplayer">HLSPlayer.net</option>
                 <option value="bestm3u8">BestM3U8Player</option>
+                <option value="anym3u8">AnyM3U8Player</option>
+                <option value="anym3u8vjs">AnyM3U8 (VideoJS)</option>
             </select>
-            <span class="source-hint">Switch source if one doesn't work</span>
+            <button id="openTabBtn" class="open-tab-btn" hidden>Open in new tab</button>
         </div>
 
-        <div class="player-wrapper">
-            <iframe
-                id="playerFrame"
+        <div class="player-wrapper" id="playerWrapper">
+            <iframe id="playerFrame" src="about:blank"
                 allowfullscreen
                 allow="autoplay; encrypted-media; fullscreen"
+                sandbox="allow-scripts allow-same-origin allow-popups allow-forms"
+                referrerpolicy="no-referrer"
             ></iframe>
             <div id="overlay" class="overlay">
                 <div class="overlay-content">
@@ -44,6 +46,17 @@
                     <p>Enter an M3U8 URL and press Play</p>
                 </div>
             </div>
+            <div id="loadingOverlay" class="overlay hidden">
+                <div class="overlay-content">
+                    <div class="spinner"></div>
+                    <p>Loading player...</p>
+                </div>
+            </div>
+        </div>
+
+        <div id="fallbackMsg" class="fallback-msg" hidden>
+            Player not loading? Try switching the Player source above, or
+            <a id="fallbackLink" href="#" target="_blank" rel="noopener">open directly in a new tab</a>.
         </div>
 
         <div class="history-section" id="historySection" hidden>
