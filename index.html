@@ -20,24 +20,22 @@
             <button id="playBtn">Play</button>
         </div>
 
-        <div class="proxy-section">
-            <label class="toggle-label">
-                <input type="checkbox" id="proxyToggle" checked>
-                <span class="toggle-slider"></span>
-                <span class="toggle-text">Use CORS Proxy (required for HTTP links on HTTPS pages)</span>
-            </label>
-            <div class="proxy-url-wrapper">
-                <input
-                    type="text"
-                    id="proxyUrlInput"
-                    placeholder="Custom proxy URL (leave empty for default)"
-                    spellcheck="false"
-                >
-            </div>
+        <div class="source-section">
+            <label for="sourceSelect">Player Source:</label>
+            <select id="sourceSelect">
+                <option value="anym3u8">AnyM3U8Player</option>
+                <option value="hlsplayer">HLSPlayer.net</option>
+                <option value="bestm3u8">BestM3U8Player</option>
+            </select>
+            <span class="source-hint">Switch source if one doesn't work</span>
         </div>
 
         <div class="player-wrapper">
-            <video id="videoPlayer" controls playsinline></video>
+            <iframe
+                id="playerFrame"
+                allowfullscreen
+                allow="autoplay; encrypted-media; fullscreen"
+            ></iframe>
             <div id="overlay" class="overlay">
                 <div class="overlay-content">
                     <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
@@ -48,27 +46,12 @@
             </div>
         </div>
 
-        <div id="errorMsg" class="error-msg" hidden></div>
-
-        <div class="info-section">
-            <div id="streamInfo" class="stream-info" hidden>
-                <h3>Stream Info</h3>
-                <div id="streamDetails"></div>
-            </div>
-
-            <div class="quality-section" hidden id="qualitySection">
-                <h3>Quality</h3>
-                <div id="qualityLevels"></div>
-            </div>
-        </div>
-
         <div class="history-section" id="historySection" hidden>
             <h3>Recent Links</h3>
             <ul id="historyList"></ul>
         </div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
     <script src="script.js"></script>
 </body>
 </html>
