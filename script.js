@@ -1,4 +1,4 @@
-const DEFAULT_PROXY = "https://corsproxy.io/?url=";
+const DEFAULT_PROXY = "https://corsproxy.io/?";
 
 const video = document.getElementById("videoPlayer");
 const urlInput = document.getElementById("urlInput");
@@ -16,13 +16,14 @@ const historyList = document.getElementById("historyList");
 
 let hls = null;
 
-// Load saved settings
+// ── Settings ──
+
 function loadSettings() {
     const saved = localStorage.getItem("m3u8player_settings");
     if (saved) {
-        const settings = JSON.parse(saved);
-        proxyToggle.checked = settings.proxyEnabled !== false;
-        proxyUrlInput.value = settings.proxyUrl || "";
+        const s = JSON.parse(saved);
+        proxyToggle.checked = s.proxyEnabled !== false;
+        proxyUrlInput.value = s.proxyUrl || "";
     }
 }
 
@@ -33,160 +34,185 @@ function saveSettings() {
     }));
 }
 
-// History
+// ── History ──
+
 function loadHistory() {
     const saved = localStorage.getItem("m3u8player_history");
     return saved ? JSON.parse(saved) : [];
 }
 
-function saveHistory(history) {
-    localStorage.setItem("m3u8player_history", JSON.stringify(history));
+function saveHistory(h) {
+    localStorage.setItem("m3u8player_history", JSON.stringify(h));
 }
 
 function addToHistory(url) {
-    let history = loadHistory();
-    history = history.filter(item => item !== url);
-    history.unshift(url);
-    if (history.length > 10) history.pop();
-    saveHistory(history);
+    let h = loadHistory().filter(i => i !== url);
+    h.unshift(url);
+    if (h.length > 10) h.pop();
+    saveHistory(h);
     renderHistory();
 }
 
 function removeFromHistory(url) {
-    let history = loadHistory();
-    history = history.filter(item => item !== url);
-    saveHistory(history);
+    saveHistory(loadHistory().filter(i => i !== url));
     renderHistory();
 }
 
 function renderHistory() {
-    const history = loadHistory();
-    if (history.length === 0) {
-        historySection.hidden = true;
-        return;
-    }
+    const h = loadHistory();
+    if (!h.length) { historySection.hidden = true; return; }
     historySection.hidden = false;
     historyList.innerHTML = "";
-    history.forEach(url => {
+    h.forEach(url => {
         const li = document.createElement("li");
-
         const a = document.createElement("a");
         a.textContent = url;
         a.title = url;
-        a.addEventListener("click", () => {
-            urlInput.value = url;
-            startPlayback(url);
-        });
-
-        const removeBtn = document.createElement("button");
-        removeBtn.textContent = "\u00d7";
-        removeBtn.title = "Remove";
-        removeBtn.addEventListener("click", () => removeFromHistory(url));
-
+        a.addEventListener("click", () => { urlInput.value = url; startPlayback(url); });
+        const btn = document.createElement("button");
+        btn.textContent = "\u00d7";
+        btn.title = "Remove";
+        btn.addEventListener("click", () => removeFromHistory(url));
         li.appendChild(a);
-        li.appendChild(removeBtn);
+        li.appendChild(btn);
         historyList.appendChild(li);
     });
 }
 
-// Proxy
-function getProxyUrl() {
+// ── Proxy helpers ──
+
+function getProxyBase() {
     if (!proxyToggle.checked) return "";
     return proxyUrlInput.value.trim() || DEFAULT_PROXY;
 }
 
-function applyProxy(url) {
-    const proxy = getProxyUrl();
-    if (!proxy) return url;
-    return proxy + encodeURIComponent(url);
+function buildProxiedUrl(originalUrl, proxyBase) {
+    if (!proxyBase) return originalUrl;
+    if (originalUrl.startsWith(proxyBase)) return originalUrl;
+    return proxyBase + encodeURIComponent(originalUrl);
 }
 
-// Error display
-function showError(msg) {
-    errorMsg.textContent = msg;
-    errorMsg.hidden = false;
+function extractOriginalUrl(proxiedUrl, proxyBase) {
+    if (!proxyBase || !proxiedUrl.startsWith(proxyBase)) return proxiedUrl;
+    return decodeURIComponent(proxiedUrl.slice(proxyBase.length));
 }
 
-function hideError() {
-    errorMsg.hidden = true;
+function getBaseUrl(url) {
+    const i = url.lastIndexOf("/");
+    return i >= 0 ? url.substring(0, i + 1) : url;
 }
 
-// Stream info display
+function resolveUrl(relative, baseUrl) {
+    if (relative.startsWith("http://") || relative.startsWith("https://")) return relative;
+    try { return new URL(relative, baseUrl).href; } catch { return relative; }
+}
+
+// ── M3U8 rewriter ──
+// Parses an M3U8 text, resolves all relative URLs against the ORIGINAL
+// (non-proxied) base URL, then wraps each in the proxy.
+
+function rewriteM3U8(text, originalManifestUrl, proxyBase) {
+    if (!proxyBase) return text;
+    const base = getBaseUrl(originalManifestUrl);
+
+    return text.split("\n").map(line => {
+        const trimmed = line.trim();
+
+        // Rewrite URI="..." inside tags (#EXT-X-KEY, #EXT-X-MAP, #EXT-X-MEDIA, etc.)
+        if (trimmed.startsWith("#")) {
+            if (trimmed.includes('URI="')) {
+                return line.replace(/URI="([^"]+)"/g, (_match, uri) => {
+                    const abs = resolveUrl(uri, base);
+                    return 'URI="' + buildProxiedUrl(abs, proxyBase) + '"';
+                });
+            }
+            return line;
+        }
+
+        // Empty lines
+        if (!trimmed) return line;
+
+        // URL lines (segment files, variant playlists)
+        const abs = resolveUrl(trimmed, base);
+        return buildProxiedUrl(abs, proxyBase);
+    }).join("\n");
+}
+
+// ── Custom HLS.js loader ──
+// Wraps the default XHR loader. For every response that looks like an M3U8
+// playlist, it rewrites internal URLs so HLS.js never sees broken relative
+// paths pointing at the proxy host.
+
+function createProxyLoader(proxyBase) {
+    const Loader = Hls.DefaultConfig.loader;
+
+    return class ProxyLoader extends Loader {
+        load(context, config, callbacks) {
+            const requestUrl = context.url;
+
+            const origSuccess = callbacks.onSuccess;
+            callbacks.onSuccess = (response, stats, ctx, networkDetails) => {
+                if (typeof response.data === "string" &&
+                    response.data.trimStart().startsWith("#EXTM3U")) {
+                    const originalUrl = extractOriginalUrl(requestUrl, proxyBase);
+                    response.data = rewriteM3U8(response.data, originalUrl, proxyBase);
+                }
+                origSuccess(response, stats, ctx, networkDetails);
+            };
+
+            super.load(context, config, callbacks);
+        }
+    };
+}
+
+// ── Error / info display ──
+
+function showError(msg) { errorMsg.textContent = msg; errorMsg.hidden = false; }
+function hideError() { errorMsg.hidden = true; }
+
 function updateStreamInfo() {
     if (!hls) return;
-
     const level = hls.levels[hls.currentLevel] || hls.levels[hls.loadLevel];
     if (!level) return;
-
     const lines = [];
-    if (level.width && level.height) {
-        lines.push(`<span>Resolution:</span> ${level.width}x${level.height}`);
-    }
-    if (level.bitrate) {
-        lines.push(`<span>Bitrate:</span> ${(level.bitrate / 1000).toFixed(0)} kbps`);
-    }
-    if (level.codecSet) {
-        lines.push(`<span>Codecs:</span> ${level.codecSet}`);
-    }
-    if (hls.levels.length > 0) {
-        lines.push(`<span>Qualities:</span> ${hls.levels.length}`);
-    }
-
-    if (lines.length > 0) {
-        streamInfo.hidden = false;
-        streamDetails.innerHTML = lines.join("<br>");
-    }
+    if (level.width && level.height) lines.push(`<span>Resolution:</span> ${level.width}x${level.height}`);
+    if (level.bitrate) lines.push(`<span>Bitrate:</span> ${(level.bitrate / 1000).toFixed(0)} kbps`);
+    if (level.codecSet) lines.push(`<span>Codecs:</span> ${level.codecSet}`);
+    if (hls.levels.length > 0) lines.push(`<span>Qualities:</span> ${hls.levels.length}`);
+    if (lines.length) { streamInfo.hidden = false; streamDetails.innerHTML = lines.join("<br>"); }
 }
 
 function renderQualityLevels() {
-    if (!hls || hls.levels.length <= 1) {
-        qualitySection.hidden = true;
-        return;
-    }
-
+    if (!hls || hls.levels.length <= 1) { qualitySection.hidden = true; return; }
     qualitySection.hidden = false;
     qualityLevels.innerHTML = "";
 
-    // Auto button
     const autoBtn = document.createElement("button");
     autoBtn.className = "quality-btn" + (hls.currentLevel === -1 ? " active" : "");
     autoBtn.textContent = "Auto";
-    autoBtn.addEventListener("click", () => {
-        hls.currentLevel = -1;
-        updateQualityButtons();
-    });
+    autoBtn.addEventListener("click", () => { hls.currentLevel = -1; updateQualityButtons(); });
     qualityLevels.appendChild(autoBtn);
 
-    hls.levels.forEach((level, index) => {
+    hls.levels.forEach((level, idx) => {
         const btn = document.createElement("button");
-        const label = level.height ? `${level.height}p` : `Level ${index}`;
-        btn.className = "quality-btn" + (hls.currentLevel === index ? " active" : "");
-        btn.textContent = label;
-        btn.addEventListener("click", () => {
-            hls.currentLevel = index;
-            updateQualityButtons();
-        });
+        btn.className = "quality-btn" + (hls.currentLevel === idx ? " active" : "");
+        btn.textContent = level.height ? `${level.height}p` : `Level ${idx}`;
+        btn.addEventListener("click", () => { hls.currentLevel = idx; updateQualityButtons(); });
         qualityLevels.appendChild(btn);
     });
 }
 
 function updateQualityButtons() {
-    const buttons = qualityLevels.querySelectorAll(".quality-btn");
-    buttons.forEach((btn, i) => {
-        if (i === 0) {
-            btn.classList.toggle("active", hls.currentLevel === -1);
-        } else {
-            btn.classList.toggle("active", hls.currentLevel === i - 1);
-        }
+    qualityLevels.querySelectorAll(".quality-btn").forEach((btn, i) => {
+        if (i === 0) btn.classList.toggle("active", hls.currentLevel === -1);
+        else btn.classList.toggle("active", hls.currentLevel === i - 1);
     });
 }
 
-// Playback
+// ── Player ──
+
 function destroyPlayer() {
-    if (hls) {
-        hls.destroy();
-        hls = null;
-    }
+    if (hls) { hls.destroy(); hls = null; }
     video.removeAttribute("src");
     video.load();
     overlay.classList.remove("hidden");
@@ -194,84 +220,66 @@ function destroyPlayer() {
     qualitySection.hidden = true;
 }
 
-function startPlayback(originalUrl) {
+function startPlayback(rawUrl) {
     hideError();
     destroyPlayer();
 
-    const url = originalUrl.trim();
-    if (!url) {
-        showError("Please enter a valid M3U8 URL.");
-        return;
-    }
+    const url = rawUrl.trim();
+    if (!url) { showError("Please enter a valid M3U8 URL."); return; }
 
     addToHistory(url);
     saveSettings();
 
-    const proxiedUrl = applyProxy(url);
+    const proxyBase = getProxyBase();
+    const sourceUrl = buildProxiedUrl(url, proxyBase);
 
     if (Hls.isSupported()) {
-        hls = new Hls({
-            xhrSetup: function(xhr, requestUrl) {
-                // If the request URL is a relative or absolute segment URL
-                // from the manifest, we also need to proxy it
-                const proxy = getProxyUrl();
-                if (proxy && !requestUrl.startsWith(proxy)) {
-                    // Check if it's already a full URL or relative
-                    let finalUrl = requestUrl;
-                    if (requestUrl.startsWith("http://") || requestUrl.startsWith("https://")) {
-                        finalUrl = proxy + encodeURIComponent(requestUrl);
-                    }
-                    xhr.open("GET", finalUrl, true);
-                }
-            },
-            enableWorker: true,
-            lowLatencyMode: false,
-        });
+        const hlsConfig = { enableWorker: true, lowLatencyMode: false };
 
-        hls.loadSource(proxiedUrl);
+        // When proxy is active, use the custom loader that rewrites M3U8 URLs
+        if (proxyBase) {
+            hlsConfig.loader = createProxyLoader(proxyBase);
+        }
+
+        hls = new Hls(hlsConfig);
+        hls.loadSource(sourceUrl);
         hls.attachMedia(video);
 
-        hls.on(Hls.Events.MANIFEST_PARSED, function() {
+        hls.on(Hls.Events.MANIFEST_PARSED, () => {
             overlay.classList.add("hidden");
             video.play().catch(() => {});
             renderQualityLevels();
             updateStreamInfo();
         });
 
-        hls.on(Hls.Events.LEVEL_SWITCHED, function() {
+        hls.on(Hls.Events.LEVEL_SWITCHED, () => {
             updateStreamInfo();
             updateQualityButtons();
         });
 
-        hls.on(Hls.Events.ERROR, function(event, data) {
+        hls.on(Hls.Events.ERROR, (_event, data) => {
             if (data.fatal) {
-                switch (data.type) {
-                    case Hls.ErrorTypes.NETWORK_ERROR:
-                        showError(
-                            "Network error: Could not load the stream. " +
-                            "If using HTTP links on HTTPS, make sure the proxy is enabled."
-                        );
-                        hls.startLoad();
-                        break;
-                    case Hls.ErrorTypes.MEDIA_ERROR:
-                        showError("Media error: Trying to recover...");
-                        hls.recoverMediaError();
-                        break;
-                    default:
-                        showError("Fatal error: " + data.details);
-                        destroyPlayer();
-                        break;
+                if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+                    showError("Network error: could not load the stream. Check the URL and proxy settings.");
+                    hls.startLoad();
+                } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
+                    showError("Media error: trying to recover...");
+                    hls.recoverMediaError();
+                } else {
+                    showError("Fatal playback error: " + data.details);
+                    destroyPlayer();
                 }
             }
         });
+
     } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
-        // Safari native HLS support
-        video.src = proxiedUrl;
-        video.addEventListener("loadedmetadata", function() {
+        // Safari native HLS
+        video.src = sourceUrl;
+        video.addEventListener("loadedmetadata", () => {
             overlay.classList.add("hidden");
             video.play().catch(() => {});
         });
-        video.addEventListener("error", function() {
+        video.addEventListener("error", () => {
             showError("Error loading stream. Check URL and proxy settings.");
         });
     } else {
@@ -279,20 +287,13 @@ function startPlayback(originalUrl) {
     }
 }
 
-// Event listeners
-playBtn.addEventListener("click", () => {
-    startPlayback(urlInput.value);
-});
+// ── Events ──
 
-urlInput.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") {
-        startPlayback(urlInput.value);
-    }
-});
-
+playBtn.addEventListener("click", () => startPlayback(urlInput.value));
+urlInput.addEventListener("keydown", e => { if (e.key === "Enter") startPlayback(urlInput.value); });
 proxyToggle.addEventListener("change", saveSettings);
 proxyUrlInput.addEventListener("input", saveSettings);
 
-// Init
+// ── Init ──
 loadSettings();
 renderHistory();
