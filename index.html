@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>M3U8 Player</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <h1 class="title">M3U8 Player</h1>
+
+        <div class="input-section">
+            <input
+                type="text"
+                id="urlInput"
+                placeholder="Paste your M3U8 link here..."
+                spellcheck="false"
+            >
+            <button id="playBtn">Play</button>
+        </div>
+
+        <div class="proxy-section">
+            <label class="toggle-label">
+                <input type="checkbox" id="proxyToggle" checked>
+                <span class="toggle-slider"></span>
+                <span class="toggle-text">Use CORS Proxy (required for HTTP links on HTTPS pages)</span>
+            </label>
+            <div class="proxy-url-wrapper">
+                <input
+                    type="text"
+                    id="proxyUrlInput"
+                    placeholder="Custom proxy URL (leave empty for default)"
+                    spellcheck="false"
+                >
+            </div>
+        </div>
+
+        <div class="player-wrapper">
+            <video id="videoPlayer" controls playsinline></video>
+            <div id="overlay" class="overlay">
+                <div class="overlay-content">
+                    <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                        <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                    </svg>
+                    <p>Enter an M3U8 URL and press Play</p>
+                </div>
+            </div>
+        </div>
+
+        <div id="errorMsg" class="error-msg" hidden></div>
+
+        <div class="info-section">
+            <div id="streamInfo" class="stream-info" hidden>
+                <h3>Stream Info</h3>
+                <div id="streamDetails"></div>
+            </div>
+
+            <div class="quality-section" hidden id="qualitySection">
+                <h3>Quality</h3>
+                <div id="qualityLevels"></div>
+            </div>
+        </div>
+
+        <div class="history-section" id="historySection" hidden>
+            <h3>Recent Links</h3>
+            <ul id="historyList"></ul>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+    <script src="script.js"></script>
+</body>
+</html>
