@@ -4,65 +4,298 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>M3U8 Player</title>
-    <link rel="stylesheet" href="style.css?v=3">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { background: #0d1117; color: #e6edf3; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+        .m3u8-container { max-width: 900px; margin: 0 auto; padding: 24px 16px; }
+        .m3u8-title { font-size: 1.5rem; font-weight: 600; margin-bottom: 20px; color: #58a6ff; }
+
+        .m3u8-input-row { display: flex; gap: 8px; margin-bottom: 12px; }
+        .m3u8-input-row input { flex: 1; padding: 10px 14px; background: #161b22; border: 1px solid #30363d; border-radius: 6px; color: #e6edf3; font-size: 14px; outline: none; }
+        .m3u8-input-row input:focus { border-color: #58a6ff; }
+        .m3u8-play-btn { padding: 10px 24px; background: #238636; color: #fff; border: none; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer; white-space: nowrap; }
+        .m3u8-play-btn:hover { background: #2ea043; }
+
+        .m3u8-mode-row { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; padding: 10px 14px; background: #161b22; border: 1px solid #30363d; border-radius: 6px; flex-wrap: wrap; }
+        .m3u8-mode-row label { font-size: 13px; color: #8b949e; white-space: nowrap; }
+        .m3u8-mode-row select { padding: 6px 10px; background: #0d1117; border: 1px solid #30363d; border-radius: 4px; color: #e6edf3; font-size: 13px; outline: none; cursor: pointer; }
+        .m3u8-newtab-btn { margin-left: auto; padding: 5px 12px; background: #21262d; border: 1px solid #30363d; border-radius: 4px; color: #58a6ff; font-size: 12px; cursor: pointer; white-space: nowrap; display: none; }
+        .m3u8-newtab-btn:hover { background: #30363d; }
+
+        .m3u8-player-box { position: relative; width: 100%; padding-bottom: 56.25%; background: #000; border-radius: 8px; overflow: hidden; margin-bottom: 10px; }
+        .m3u8-player-box video,
+        .m3u8-player-box iframe { position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: none; z-index: 1; }
+        .m3u8-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 2; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,0.85); pointer-events: none; }
+        .m3u8-overlay.off { display: none !important; }
+        .m3u8-overlay-inner { text-align: center; color: #8b949e; }
+        .m3u8-overlay-inner p { font-size: 14px; }
+        .m3u8-overlay-inner svg { margin-bottom: 12px; opacity: 0.5; }
+        .m3u8-spinner { width: 40px; height: 40px; border: 3px solid #30363d; border-top-color: #58a6ff; border-radius: 50%; margin: 0 auto 12px; animation: m3u8spin .8s linear infinite; }
+        @keyframes m3u8spin { to { transform: rotate(360deg); } }
+
+        .m3u8-msg { padding: 10px 14px; border-radius: 6px; font-size: 13px; margin-bottom: 12px; display: none; }
+        .m3u8-msg.err { background: #490202; border: 1px solid #f85149; color: #f85149; }
+        .m3u8-msg.info { background: #161b22; border: 1px solid #30363d; color: #8b949e; }
+        .m3u8-msg a { color: #58a6ff; text-decoration: underline; }
+
+        .m3u8-history { padding: 12px; background: #161b22; border: 1px solid #30363d; border-radius: 6px; display: none; }
+        .m3u8-history h3 { font-size: 13px; font-weight: 600; color: #8b949e; text-transform: uppercase; letter-spacing: .5px; margin-bottom: 8px; }
+        .m3u8-history ul { list-style: none; }
+        .m3u8-history li { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid #21262d; font-size: 13px; }
+        .m3u8-history li:last-child { border-bottom: none; }
+        .m3u8-history li a { color: #58a6ff; text-decoration: none; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+        .m3u8-history li a:hover { text-decoration: underline; }
+        .m3u8-history li button { background: none; border: none; color: #f85149; cursor: pointer; font-size: 16px; padding: 0 4px; opacity: .6; }
+        .m3u8-history li button:hover { opacity: 1; }
+
+        @media (max-width: 600px) {
+            .m3u8-input-row { flex-direction: column; }
+            .m3u8-play-btn { width: 100%; }
+            .m3u8-newtab-btn { margin-left: 0; }
+        }
+    </style>
 </head>
 <body>
-    <div class="container">
-        <h1 class="title">M3U8 Player</h1>
 
-        <div class="input-section">
-            <input
-                type="text"
-                id="urlInput"
-                placeholder="Paste your M3U8 link here..."
-                spellcheck="false"
-            >
-            <button id="playBtn">Play</button>
-        </div>
+<div class="m3u8-container">
+    <h1 class="m3u8-title">M3U8 Player</h1>
 
-        <div class="source-section">
-            <label for="sourceSelect">Player:</label>
-            <select id="sourceSelect">
-                <option value="hlsplayer">HLSPlayer.net</option>
-                <option value="bestm3u8">BestM3U8Player</option>
-                <option value="anym3u8">AnyM3U8Player</option>
-                <option value="anym3u8vjs">AnyM3U8 (VideoJS)</option>
-            </select>
-            <button id="openTabBtn" class="open-tab-btn" hidden>Open in new tab</button>
-        </div>
+    <div class="m3u8-input-row">
+        <input type="text" id="m3u8Url" placeholder="Paste your M3U8 link here..." spellcheck="false">
+        <button class="m3u8-play-btn" id="m3u8Play">Play</button>
+    </div>
 
-        <div class="player-wrapper" id="playerWrapper">
-            <iframe id="playerFrame" src="about:blank"
-                allow="autoplay; encrypted-media; fullscreen"
-                referrerpolicy="no-referrer"
-            ></iframe>
-            <div id="overlay" class="overlay">
-                <div class="overlay-content">
-                    <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                        <polygon points="5 3 19 12 5 21 5 3"></polygon>
-                    </svg>
-                    <p>Enter an M3U8 URL and press Play</p>
-                </div>
-            </div>
-            <div id="loadingOverlay" class="overlay hidden">
-                <div class="overlay-content">
-                    <div class="spinner"></div>
-                    <p>Loading player...</p>
-                </div>
+    <div class="m3u8-mode-row">
+        <label for="m3u8Mode">Mode:</label>
+        <select id="m3u8Mode">
+            <option value="embed_hlsplayer">Embed - HLSPlayer.net</option>
+            <option value="embed_best">Embed - BestM3U8Player</option>
+            <option value="embed_any">Embed - AnyM3U8Player</option>
+            <option value="embed_anyvjs">Embed - AnyM3U8 (VideoJS)</option>
+            <option value="direct">Direct - HLS.js (no proxy)</option>
+        </select>
+        <button class="m3u8-newtab-btn" id="m3u8NewTab">Open in new tab</button>
+    </div>
+
+    <div class="m3u8-player-box" id="m3u8Box">
+        <video id="m3u8Video" controls playsinline style="display:none"></video>
+        <iframe id="m3u8Frame" src="about:blank" allow="autoplay; encrypted-media; fullscreen" referrerpolicy="no-referrer" style="display:none"></iframe>
+        <div class="m3u8-overlay" id="m3u8Idle">
+            <div class="m3u8-overlay-inner">
+                <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                <p>Enter an M3U8 URL and press Play</p>
             </div>
         </div>
-
-        <div id="fallbackMsg" class="fallback-msg" hidden>
-            Player not loading? Try switching the Player source above, or
-            <a id="fallbackLink" href="#" target="_blank" rel="noopener">open directly in a new tab</a>.
-        </div>
-
-        <div class="history-section" id="historySection" hidden>
-            <h3>Recent Links</h3>
-            <ul id="historyList"></ul>
+        <div class="m3u8-overlay off" id="m3u8Loading">
+            <div class="m3u8-overlay-inner">
+                <div class="m3u8-spinner"></div>
+                <p>Loading...</p>
+            </div>
         </div>
     </div>
 
-    <script src="script.js?v=3"></script>
+    <div class="m3u8-msg err" id="m3u8Err"></div>
+    <div class="m3u8-msg info" id="m3u8Info">Player not loading? Try a different Mode above, or <a id="m3u8InfoLink" href="#" target="_blank" rel="noopener">open directly in a new tab</a>.</div>
+
+    <div class="m3u8-history" id="m3u8Hist">
+        <h3>Recent Links</h3>
+        <ul id="m3u8HistList"></ul>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+<script>
+(function() {
+    // ── Elements ──
+    var $url     = document.getElementById("m3u8Url");
+    var $play    = document.getElementById("m3u8Play");
+    var $mode    = document.getElementById("m3u8Mode");
+    var $newtab  = document.getElementById("m3u8NewTab");
+    var $video   = document.getElementById("m3u8Video");
+    var $frame   = document.getElementById("m3u8Frame");
+    var $idle    = document.getElementById("m3u8Idle");
+    var $loading = document.getElementById("m3u8Loading");
+    var $err     = document.getElementById("m3u8Err");
+    var $info    = document.getElementById("m3u8Info");
+    var $infoLnk = document.getElementById("m3u8InfoLink");
+    var $hist    = document.getElementById("m3u8Hist");
+    var $histUl  = document.getElementById("m3u8HistList");
+
+    var hls = null;
+    var embedUrl = "";
+    var infoTimer = null;
+
+    // ── Embed URLs ──
+    var EMBEDS = {
+        embed_hlsplayer: function(u) { return "https://www.hlsplayer.net/?url=" + encodeURIComponent(u); },
+        embed_best:      function(u) { return "https://bestm3u8player.com/player.html?url=" + encodeURIComponent(u); },
+        embed_any:       function(u) { return "https://anym3u8player.com/tv/p.php?url=" + encodeURIComponent(u); },
+        embed_anyvjs:    function(u) { return "https://anym3u8player.com/tv/video-player.php?url=" + encodeURIComponent(u); },
+    };
+
+    // ── Helpers ──
+    function sGet(k) { try { return localStorage.getItem(k); } catch(e) { return null; } }
+    function sSet(k, v) { try { localStorage.setItem(k, v); } catch(e) {} }
+
+    function showErr(msg) { $err.textContent = msg; $err.style.display = "block"; }
+    function hideErr() { $err.style.display = "none"; }
+    function showInfo() { $info.style.display = "block"; }
+    function hideInfo() { $info.style.display = "none"; }
+
+    // ── Settings ──
+    function loadSettings() {
+        var raw = sGet("m3u8_settings");
+        if (raw) {
+            var s = JSON.parse(raw);
+            if (s.mode) $mode.value = s.mode;
+        }
+    }
+    function saveSettings() { sSet("m3u8_settings", JSON.stringify({ mode: $mode.value })); }
+
+    // ── History ──
+    function getHist() { var r = sGet("m3u8_hist"); return r ? JSON.parse(r) : []; }
+    function setHist(h) { sSet("m3u8_hist", JSON.stringify(h)); }
+
+    function addHist(url) {
+        var h = getHist().filter(function(x) { return x !== url; });
+        h.unshift(url);
+        if (h.length > 10) h.pop();
+        setHist(h);
+        renderHist();
+    }
+
+    function renderHist() {
+        var h = getHist();
+        if (!h.length) { $hist.style.display = "none"; return; }
+        $hist.style.display = "block";
+        $histUl.innerHTML = "";
+        h.forEach(function(url) {
+            var li = document.createElement("li");
+            var a = document.createElement("a");
+            a.textContent = url; a.title = url;
+            a.addEventListener("click", function() { $url.value = url; play(); });
+            var btn = document.createElement("button");
+            btn.textContent = "\u00d7"; btn.title = "Remove";
+            btn.addEventListener("click", function() {
+                setHist(getHist().filter(function(x) { return x !== url; }));
+                renderHist();
+            });
+            li.appendChild(a); li.appendChild(btn);
+            $histUl.appendChild(li);
+        });
+    }
+
+    // ── Stop ──
+    function stop() {
+        if (hls) { hls.destroy(); hls = null; }
+        $video.pause();
+        $video.removeAttribute("src");
+        $video.style.display = "none";
+        $frame.src = "about:blank";
+        $frame.style.display = "none";
+    }
+
+    // ── Play ──
+    function play() {
+        var url = $url.value.trim();
+        if (!url) return;
+
+        // Reset UI immediately
+        stop();
+        hideErr();
+        hideInfo();
+        $idle.classList.add("off");
+        $loading.classList.remove("off");
+        clearTimeout(infoTimer);
+
+        var mode = $mode.value;
+        saveSettings();
+        addHist(url);
+
+        if (mode === "direct") {
+            playDirect(url);
+        } else {
+            playEmbed(url, mode);
+        }
+    }
+
+    // ── Direct HLS.js playback ──
+    function playDirect(url) {
+        $video.style.display = "block";
+        $frame.style.display = "none";
+
+        if (Hls.isSupported()) {
+            hls = new Hls({ enableWorker: true });
+            hls.loadSource(url);
+            hls.attachMedia($video);
+            hls.on(Hls.Events.MANIFEST_PARSED, function() {
+                $loading.classList.add("off");
+                $video.play().catch(function(){});
+            });
+            hls.on(Hls.Events.ERROR, function(ev, data) {
+                if (data.fatal) {
+                    $loading.classList.add("off");
+                    if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+                        showErr("Network error. If your site is HTTPS and the stream is HTTP, switch to an Embed mode.");
+                    } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
+                        hls.recoverMediaError();
+                    } else {
+                        showErr("Playback error: " + data.details);
+                    }
+                }
+            });
+        } else if ($video.canPlayType("application/vnd.apple.mpegurl")) {
+            $video.src = url;
+            $video.addEventListener("loadedmetadata", function() {
+                $loading.classList.add("off");
+                $video.play().catch(function(){});
+            }, { once: true });
+            $video.addEventListener("error", function() {
+                $loading.classList.add("off");
+                showErr("Playback error. Try an Embed mode.");
+            }, { once: true });
+        } else {
+            $loading.classList.add("off");
+            showErr("Browser does not support HLS. Use an Embed mode.");
+        }
+    }
+
+    // ── Embed (iframe) playback ──
+    function playEmbed(url, mode) {
+        $video.style.display = "none";
+        $frame.style.display = "block";
+
+        var buildFn = EMBEDS[mode];
+        if (!buildFn) return;
+
+        embedUrl = buildFn(url);
+        $frame.src = embedUrl;
+        $infoLnk.href = embedUrl;
+        $newtab.style.display = "inline-block";
+
+        $frame.onload = function() { $loading.classList.add("off"); };
+
+        // Show help after 6s if it seems stuck
+        infoTimer = setTimeout(function() { showInfo(); }, 6000);
+    }
+
+    // ── Events ──
+    $play.addEventListener("click", play);
+    $url.addEventListener("keydown", function(e) { if (e.key === "Enter") play(); });
+    $mode.addEventListener("change", function() {
+        saveSettings();
+        if ($url.value.trim() && !$idle.classList.contains("off")) return;
+        if ($url.value.trim()) play();
+    });
+    $newtab.addEventListener("click", function() {
+        if (embedUrl) window.open(embedUrl, "_blank");
+    });
+
+    // ── Init ──
+    loadSettings();
+    renderHist();
+})();
+</script>
+
 </body>
 </html>
